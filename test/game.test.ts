@@ -125,7 +125,7 @@ describe("GAME", function () {
             await game.joinGame({ value: parseEther("1") });
             await ethers.provider.send("evm_increaseTime", [600]);
             await game.pickNumber(1);
-            expect(await game.getPlayerNumber(owner.address)).to.equal(100);
+            expect(await game.getPlayerNumber(owner.address)).to.equal(1);
         });
         it("Should emit a NumberPicked event", async () => {
             const { game, owner } = await loadFixture(deployGameFixture);
@@ -160,14 +160,16 @@ describe("GAME", function () {
             await game.joinGame({ value: parseEther("1") });
             await game.connect(signers[1]).joinGame({ value: parseEther("1") });
             await game.connect(signers[2]).joinGame({ value: parseEther("1") });
+            await game.connect(signers[3]).joinGame({ value: parseEther("1") });
             await ethers.provider.send("evm_increaseTime", [600]);
-            await game.pickNumber(30);
-            await game.connect(signers[1]).pickNumber(40);
-            await game.connect(signers[2]).pickNumber(60);
+            await game.pickNumber(5);
+            await game.connect(signers[1]).pickNumber(10);
+            await game.connect(signers[2]).pickNumber(15);
+            await game.connect(signers[3]).pickNumber(35);
             await ethers.provider.send("evm_increaseTime", [300]);
             await expect(game.getWinner())
                 .to.emit(game, "Winner")
-                .withArgs(owner.address, 50);
+                .withArgs(signers[3].address, 15);
             // TODO: There is some Decimal gotcha here need to fix this
         });
     });

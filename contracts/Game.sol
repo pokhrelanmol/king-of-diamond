@@ -11,94 +11,112 @@ error NotAPlayer();
 error GameEnded();
 error NumberAlreadyPicked();
 error GameNotOver();
+error revealTimeOver();
+error IncorrectNumberOrSalt();
 
 contract Game {
     event GameJoined(address player, uint256 entryFee);
     event NumberPicked(address player, uint256 number);
     event Winner(address winner, uint256 numberPicked);
 
-    uint256 immutable gameDelay;
-    uint256 immutable gamePeriod;
-    uint256 immutable entryFee;
-    address immutable deployer;
+    //TODO: compact variables to uint 32
+    uint256 public immutable gameDeadline;
+    uint256 public immutable revealNumberDeadline;
+    // convert to uint112
+    uint160 public immutable entryFee;
+    address public immutable deployer;
 
     address[] public players;
+    mapping(address => bytes32) public playerToSecret;
+
+    address[] public playersRevealed;
     mapping(address => uint256) public playerToNumberPicked;
 
-    constructor(uint256 _entryFee) payable {
+    constructor(
+        uint256 _entryFee,
+        uint256 gamePeriod,
+        uint256 revealPeriod
+    ) payable {
         if (_entryFee == 0) revert EntryFeeCannotBeZero();
         deployer = msg.sender;
-        gameDelay = block.timestamp + 600; // 10 minutes
-        gamePeriod = gameDelay + 300; // 15 minutes
-        entryFee = _entryFee;
+
+        gameDeadline = block.timestamp + gamePeriod;
+        revealNumberDeadline = gameDeadline + revealPeriod;
+        entryFee = uint160(_entryFee);
     }
 
-    function joinGame() external payable {
-        if (block.timestamp >= gameDelay) revert GameAlreadyStarted();
+    function _isPlayer(address player) internal returns (bool isPlayer) {
+        if (playerToSecret[player] != 0) {
+            // i don't know the correct way to check if a mapping has a value
+            return true;
+        }
+        return false;
+    }
+
+    function pickNumber(bytes32 _secret) external payable {
+        if (block.timestamp >= gameDeadline) revert GameEnded(); // this will avoid front running
+        if (_isPlayer(msg.sender)) revert NumberAlreadyPicked();
         if (msg.value < entryFee) revert EntryFeeIsLow();
         players.push(msg.sender);
-        emit GameJoined(msg.sender, msg.value);
-    }
-
-    function pickNumber(uint256 _number) external {
-        address[] memory _players = players;
-        uint256 _playersLength = _players.length;
-        for (uint256 i = 0; i < _playersLength; i++) {
-            if (_players[i] == msg.sender) {
-                if (playerToNumberPicked[msg.sender] != 0)
-                    revert NumberAlreadyPicked();
-                if (block.timestamp <= gameDelay) revert GameNotStarted();
-                if (block.timestamp >= gamePeriod) revert GameEnded();
-                if (_number > 100 || _number <= 0) revert NumberOutOfRange();
-                playerToNumberPicked[msg.sender] = _number;
-                emit NumberPicked(msg.sender, _number);
-                return;
-            }
-        }
+        playerToSecret[msg.sender] = _secret;
         revert NotAPlayer();
+        // Caviate: if number is greater then 100 we can't really check it here but we can kick the player out and seize the entry fee if it is not in range at reveal time
     }
 
-    function getWinner() external {
-        if (block.timestamp <= gameDelay) revert GameNotStarted();
-        if (block.timestamp <= gamePeriod) revert GameNotOver();
-        address[] memory _players = players;
-        uint256 _playersLength = _players.length;
+    // I want a way to reveal the hashed number
+    function revealNumber(uint256 _number, string memory _salt) external {
+        if (!_isPlayer(msg.sender)) revert NotAPlayer();
+        if (_number > 100 || _number <= 0) revert NumberOutOfRange();
+        if (block.timestamp < gameDeadline) revert GameNotOver();
+        if (block.timestamp > revealNumberDeadline) revert revealTimeOver();
+        if (
+            keccak256(abi.encodePacked(_number, _salt)) !=
+            playerToSecret[msg.sender]
+        ) revert IncorrectNumberOrSalt();
+        playerToNumberPicked[msg.sender] = _number;
+        playersRevealed.push(msg.sender);
+        // last to call this function will also call getWinner function
+
+        if (playersRevealed.length == players.length) {
+            getWinner();
+        }
+    }
+
+    function getWinner() public {
+        if (block.timestamp <= gameDeadline) revert GameNotOver();
+        address[] memory _playersRevealed = playersRevealed;
         uint256 _total;
         uint256 result;
-        uint256 _winnerNumber = 0;
+        uint256 _winnerNumber;
         address _winner;
-        for (uint256 i = 0; i < _playersLength; i++) {
-            _total += playerToNumberPicked[_players[i]];
+        for (uint256 i; i < _playersRevealed.length; i++) {
+            _total += playerToNumberPicked[_playersRevealed[i]]; // add all numbers
         }
-        result = ((_total / _playersLength)) * 80; // divide this by 100
+        result = ((_total / _playersRevealed.length) * 80); // divide this by 100
         // pick a player who chooses closest to the result
-        if (playerToNumberPicked[_players[0]] > result / 100) {
-            _winnerNumber = playerToNumberPicked[_players[0]] - result / 100;
-            _winner = _players[0];
+        address firstPlayer = _playersRevealed[0];
+        if (playerToNumberPicked[firstPlayer] > result) {
+            _winnerNumber = playerToNumberPicked[firstPlayer] - result;
+            _winner = firstPlayer;
         } else {
-            _winnerNumber = result - playerToNumberPicked[_players[0]] / 100;
-            _winner = _players[0];
+            _winnerNumber = result - playerToNumberPicked[firstPlayer];
+            _winner = firstPlayer;
         }
 
-        for (uint256 i = 0; i < _playersLength; i++) {
+        for (uint256 i = 0; i < _playersRevealed.length; i++) {
+            address _player = _playersRevealed[i];
             if (
-                playerToNumberPicked[_players[i]] > result / 100 &&
-                playerToNumberPicked[_players[i]] - result / 100 < _winnerNumber
+                playerToNumberPicked[_player] > result &&
+                playerToNumberPicked[_player] - result < _winnerNumber
             ) {
-                _winnerNumber =
-                    playerToNumberPicked[_players[i]] -
-                    result /
-                    100;
-                _winner = _players[i];
+                _winnerNumber = playerToNumberPicked[_player] - result;
+                _winner = _player;
             } else if (
-                playerToNumberPicked[_players[i]] < result / 100 &&
-                result - playerToNumberPicked[_players[i]] / 100 < _winnerNumber
+                playerToNumberPicked[_player] < result &&
+                result - playerToNumberPicked[_player] < _winnerNumber
             ) {
-                _winnerNumber =
-                    result -
-                    playerToNumberPicked[_players[i]] /
-                    100;
-                _winner = _players[i];
+                _winnerNumber = result - playerToNumberPicked[_player];
+                _winner = _player;
             }
         }
         emit Winner(_winner, playerToNumberPicked[_winner]);
@@ -106,12 +124,12 @@ contract Game {
 
     // view/pure functions
 
-    function getGameDelay() external view returns (uint256) {
-        return gameDelay;
+    function getDealine() external view returns (uint256) {
+        return gameDeadline;
     }
 
-    function getGamePeriod() external view returns (uint256) {
-        return gamePeriod;
+    function revealDeadline() external view returns (uint256) {
+        return revealNumberDeadline;
     }
 
     function getEntryFee() external view returns (uint256) {
