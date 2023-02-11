@@ -11,7 +11,7 @@ error NotAPlayer();
 error GameEnded();
 error NumberAlreadyPicked();
 error GameNotOver();
-error revealTimeOver();
+error RevealTimeOver();
 error IncorrectNumberOrSalt();
 
 contract Game {
@@ -47,7 +47,6 @@ contract Game {
 
     function _isPlayer(address player) internal returns (bool isPlayer) {
         if (playerToSecret[player] != 0) {
-            // i don't know the correct way to check if a mapping has a value
             return true;
         }
         return false;
@@ -59,16 +58,14 @@ contract Game {
         if (msg.value < entryFee) revert EntryFeeIsLow();
         players.push(msg.sender);
         playerToSecret[msg.sender] = _secret;
-        revert NotAPlayer();
         // Caviate: if number is greater then 100 we can't really check it here but we can kick the player out and seize the entry fee if it is not in range at reveal time
     }
 
-    // I want a way to reveal the hashed number
     function revealNumber(uint256 _number, string memory _salt) external {
         if (!_isPlayer(msg.sender)) revert NotAPlayer();
         if (_number > 100 || _number <= 0) revert NumberOutOfRange();
         if (block.timestamp < gameDeadline) revert GameNotOver();
-        if (block.timestamp > revealNumberDeadline) revert revealTimeOver();
+        if (block.timestamp > revealNumberDeadline) revert RevealTimeOver();
         if (
             keccak256(abi.encodePacked(_number, _salt)) !=
             playerToSecret[msg.sender]
@@ -146,5 +143,14 @@ contract Game {
 
     function getPlayerNumber(address _player) external view returns (uint256) {
         return playerToNumberPicked[_player];
+    }
+
+    function createSecret(uint256 _number, string memory _salt)
+        external
+        pure
+        returns (bytes32)
+    {
+        bytes32 hash = keccak256(abi.encodePacked(_number, _salt));
+        return hash;
     }
 }
