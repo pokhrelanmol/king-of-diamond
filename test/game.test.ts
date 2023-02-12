@@ -23,7 +23,7 @@ describe("GAME", function () {
         const Game = await ethers.getContractFactory("Game");
         const game = await Game.deploy(ENTRY_FEE, GAME_PERIOD, REVEAL_PERIOD);
 
-        const secret = await game.createSecret("30", SALT);
+        const secret = await game.createSecret(30, SALT);
 
         return {
             REVEAL_PERIOD,
@@ -47,37 +47,39 @@ describe("GAME", function () {
     });
     describe("PickNumber", () => {
         it("It should revert if deadline is passed", async () => {
-            const { GAME_PERIOD, game, secret } = await loadFixture(
+            const { GAME_PERIOD, game, secret, SALT } = await loadFixture(
                 deployGameFixture
             );
             await time.increase(GAME_PERIOD);
-            await expect(game.pickNumber(secret)).to.be.revertedWithCustomError(
-                game,
-                "GameEnded"
-            );
+            const hashedMove = getHashedMove(30, SALT);
+            await expect(
+                game.pickNumber(hashedMove)
+            ).to.be.revertedWithCustomError(game, "GameEnded");
         });
         it("Should revert player already picked a number", async () => {
-            const { secret, game, ENTRY_FEE } = await loadFixture(
+            const { secret, game, ENTRY_FEE, SALT } = await loadFixture(
                 deployGameFixture
             );
-            await game.pickNumber(secret, { value: ENTRY_FEE });
+            const hashedMove = getHashedMove(30, SALT);
+            await game.pickNumber(hashedMove, { value: ENTRY_FEE });
 
             await expect(
                 game.pickNumber(secret, { value: ENTRY_FEE })
             ).to.be.revertedWithCustomError(game, "NumberAlreadyPicked");
         });
         it("Should revert if entry fee is low", async () => {
-            const { secret, game } = await loadFixture(deployGameFixture);
-            await expect(game.pickNumber(secret)).to.be.revertedWithCustomError(
-                game,
-                "EntryFeeIsLow"
-            );
+            const { secret, game, SALT } = await loadFixture(deployGameFixture);
+            const hashedMove = getHashedMove(30, SALT);
+            await expect(
+                game.pickNumber(hashedMove)
+            ).to.be.revertedWithCustomError(game, "EntryFeeIsLow");
         });
         it("Should update players array", async () => {
-            const { secret, game, ENTRY_FEE } = await loadFixture(
+            const { secret, game, ENTRY_FEE, SALT } = await loadFixture(
                 deployGameFixture
             );
-            await game.pickNumber(secret, { value: ENTRY_FEE });
+            const hashedMove = getHashedMove(30, SALT);
+            await game.pickNumber(hashedMove, { value: ENTRY_FEE });
             expect(await game.getPlayersCount()).to.eq(1);
         });
     });
@@ -101,8 +103,8 @@ describe("GAME", function () {
         it("Should revert if number is less <=0 or greater than 100", async () => {
             const { game, secret, ENTRY_FEE, GAME_PERIOD, SALT } =
                 await loadFixture(deployGameFixture);
-
-            await game.pickNumber(secret, { value: ENTRY_FEE });
+            const hashedMove = getHashedMove(0, SALT);
+            await game.pickNumber(hashedMove, { value: ENTRY_FEE });
             await time.increase(GAME_PERIOD);
             await expect(
                 game.revealNumber(0, SALT)
@@ -111,7 +113,8 @@ describe("GAME", function () {
         it("Should revert of not a player", async () => {
             const { GAME_PERIOD, game, secret, ENTRY_FEE, otherAccount, SALT } =
                 await loadFixture(deployGameFixture);
-            await game.pickNumber(secret, { value: ENTRY_FEE });
+            const hashedMove = getHashedMove(30, SALT);
+            await game.pickNumber(hashedMove, { value: ENTRY_FEE });
 
             await time.increase(GAME_PERIOD);
             await expect(
@@ -121,7 +124,8 @@ describe("GAME", function () {
         it("Should revert if incorrect number or salt provider", async () => {
             const { game, secret, ENTRY_FEE, otherAccount, GAME_PERIOD, SALT } =
                 await loadFixture(deployGameFixture);
-            await game.pickNumber(secret, { value: ENTRY_FEE });
+            const hashedMove = getHashedMove(30, SALT);
+            await game.pickNumber(hashedMove, { value: ENTRY_FEE });
             await time.increase(GAME_PERIOD);
             await expect(
                 game.revealNumber(32, SALT)
@@ -130,7 +134,8 @@ describe("GAME", function () {
         it("Should revert if game is not over", async () => {
             const { game, secret, ENTRY_FEE, SALT, otherAccount, GAME_PERIOD } =
                 await loadFixture(deployGameFixture);
-            await game.pickNumber(secret, { value: ENTRY_FEE });
+            const hashedMove = getHashedMove(30, SALT);
+            await game.pickNumber(hashedMove, { value: ENTRY_FEE });
             await expect(
                 game.revealNumber(30, SALT)
             ).to.be.revertedWithCustomError(game, "GameNotOver");
@@ -139,7 +144,7 @@ describe("GAME", function () {
             const { game, secret, ENTRY_FEE, SALT, GAME_PERIOD, owner } =
                 await loadFixture(deployGameFixture);
             const hashedMove = getHashedMove(30, SALT);
-            await game.pickNumber(secret, {
+            await game.pickNumber(hashedMove, {
                 value: ENTRY_FEE,
             });
             await time.increase(GAME_PERIOD);
