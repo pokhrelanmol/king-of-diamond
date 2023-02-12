@@ -150,7 +150,7 @@ describe("GAME", function () {
             const { game, secret, ENTRY_FEE, SALT, GAME_PERIOD, owner } =
                 await loadFixture(deployGameFixture);
             const hashedMove = getHashedMove(30, SALT);
-            await game.pickNumber(secret, {
+            await game.pickNumber(hashedMove, {
                 value: ENTRY_FEE,
             });
             await time.increase(GAME_PERIOD);
