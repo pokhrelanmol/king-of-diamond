@@ -61,7 +61,7 @@ contract Game {
         // Caviate: if number is greater then 100 we can't really check it here but we can kick the player out and seize the entry fee if it is not in range at reveal time
     }
 
-    function revealNumber(uint256 _number, string memory _salt) external {
+    function revealNumber(uint8 _number, bytes32 _salt) external {
         if (!_isPlayer(msg.sender)) revert NotAPlayer();
         if (_number > 100 || _number <= 0) revert NumberOutOfRange();
         if (block.timestamp < gameDeadline) revert GameNotOver();
@@ -133,19 +133,24 @@ contract Game {
         return entryFee;
     }
 
-    function getDeployer() external view returns (address) {
-        return deployer;
-    }
-
     function getPlayersCount() external view returns (uint256) {
         return players.length;
     }
 
-    function getPlayerNumber(address _player) external view returns (uint256) {
+    function getPlayerRevealedNumber(address _player)
+        external
+        view
+        returns (uint256)
+    {
         return playerToNumberPicked[_player];
     }
 
-    function createSecret(uint256 _number, string memory _salt)
+    function getRevealedPlayersCount() external view returns (uint256) {
+        return playersRevealed.length;
+    }
+
+    //    helper function to create secret
+    function createSecret(uint8 _number, bytes32 _salt)
         external
         pure
         returns (bytes32)

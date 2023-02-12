@@ -2,7 +2,13 @@ import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { parseEther } from "ethers/lib/utils";
-
+const getHashedMove = (_number: number, _salt: string) => {
+    const hashedMove = ethers.utils.solidityKeccak256(
+        ["uint8", "bytes32"],
+        [_number, _salt]
+    );
+    return hashedMove;
+};
 describe("GAME", function () {
     async function deployGameFixture() {
         const ENTRY_FEE = parseEther("1");
@@ -13,7 +19,7 @@ describe("GAME", function () {
 
         const GAME_PERIOD = 300; //15 minutes
         const REVEAL_PERIOD = 300; //15 minutes
-        const SALT = "1234";
+        const SALT = ethers.utils.id("1234");
         const Game = await ethers.getContractFactory("Game");
         const game = await Game.deploy(ENTRY_FEE, GAME_PERIOD, REVEAL_PERIOD);
 
@@ -37,7 +43,6 @@ describe("GAME", function () {
             const { REVEAL_PERIOD, GAME_PERIOD, ENTRY_FEE, game, owner } =
                 await loadFixture(deployGameFixture);
             expect(await game.getEntryFee()).to.equal(ENTRY_FEE);
-            expect(await game.getDeployer()).to.equal(owner.address);
         });
     });
     describe("PickNumber", () => {
@@ -78,60 +83,79 @@ describe("GAME", function () {
     });
     describe("RevealNumber", () => {
         it("Should revert if reveal time is passed", async () => {
-            const { REVEAL_PERIOD, GAME_PERIOD, game, secret, ENTRY_FEE } =
-                await loadFixture(deployGameFixture);
+            const {
+                REVEAL_PERIOD,
+                GAME_PERIOD,
+                SALT,
+                game,
+                secret,
+                ENTRY_FEE,
+            } = await loadFixture(deployGameFixture);
             await game.pickNumber(secret, { value: ENTRY_FEE });
             await time.increase(GAME_PERIOD + REVEAL_PERIOD);
 
             await expect(
-                game.revealNumber("30", "1234")
+                game.revealNumber(30, SALT)
             ).to.be.revertedWithCustomError(game, "RevealTimeOver");
         });
         it("Should revert if number is less <=0 or greater than 100", async () => {
-            const { game, secret, ENTRY_FEE, GAME_PERIOD } = await loadFixture(
-                deployGameFixture
-            );
+            const { game, secret, ENTRY_FEE, GAME_PERIOD, SALT } =
+                await loadFixture(deployGameFixture);
 
             await game.pickNumber(secret, { value: ENTRY_FEE });
             await time.increase(GAME_PERIOD);
             await expect(
-                game.revealNumber(0, "1234")
+                game.revealNumber(0, SALT)
             ).to.be.revertedWithCustomError(game, "NumberOutOfRange");
         });
         it("Should revert of not a player", async () => {
-            const { GAME_PERIOD, game, secret, ENTRY_FEE, otherAccount } =
+            const { GAME_PERIOD, game, secret, ENTRY_FEE, otherAccount, SALT } =
                 await loadFixture(deployGameFixture);
             await game.pickNumber(secret, { value: ENTRY_FEE });
 
             await time.increase(GAME_PERIOD);
             await expect(
-                game.connect(otherAccount).revealNumber(30, "1234")
+                game.connect(otherAccount).revealNumber(30, SALT)
             ).to.be.revertedWithCustomError(game, "NotAPlayer");
         });
         it("Should revert if incorrect number or salt provider", async () => {
-            const { game, secret, ENTRY_FEE, otherAccount, GAME_PERIOD } =
+            const { game, secret, ENTRY_FEE, otherAccount, GAME_PERIOD, SALT } =
                 await loadFixture(deployGameFixture);
             await game.pickNumber(secret, { value: ENTRY_FEE });
             await time.increase(GAME_PERIOD);
             await expect(
-                game.revealNumber(32, "1234")
+                game.revealNumber(32, SALT)
             ).to.be.revertedWithCustomError(game, "IncorrectNumberOrSalt");
         });
         it("Should revert if game is not over", async () => {
-            const { game, secret, ENTRY_FEE, otherAccount, GAME_PERIOD } =
+            const { game, secret, ENTRY_FEE, SALT, otherAccount, GAME_PERIOD } =
                 await loadFixture(deployGameFixture);
             await game.pickNumber(secret, { value: ENTRY_FEE });
             await expect(
-                game.revealNumber(30, "1234")
+                game.revealNumber(30, SALT)
             ).to.be.revertedWithCustomError(game, "GameNotOver");
         });
         it("Should update the PlayertToNumberPicked mapping", async () => {
-            const { game, secret, ENTRY_FEE, GAME_PERIOD, owner } =
+            const { game, secret, ENTRY_FEE, SALT, GAME_PERIOD, owner } =
                 await loadFixture(deployGameFixture);
-            await game.pickNumber(secret, { value: ENTRY_FEE });
+            const hashedMove = getHashedMove(30, SALT);
+            await game.pickNumber(secret, {
+                value: ENTRY_FEE,
+            });
             await time.increase(GAME_PERIOD);
-            await game.revealNumber(30, "1234");
+            await game.revealNumber(30, SALT);
             expect(await game.playerToNumberPicked(owner.address)).to.eq(30);
+        });
+        it("Should update playersRevealed Array", async () => {
+            const { game, secret, ENTRY_FEE, SALT, GAME_PERIOD, owner } =
+                await loadFixture(deployGameFixture);
+            const hashedMove = getHashedMove(30, SALT);
+            await game.pickNumber(secret, {
+                value: ENTRY_FEE,
+            });
+            await time.increase(GAME_PERIOD);
+            await game.revealNumber(30, SALT);
+            expect(await game.getRevealedPlayersCount()).to.eq(1);
         });
     });
 });
