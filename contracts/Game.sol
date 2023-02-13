@@ -79,6 +79,9 @@ contract Game {
         }
     }
 
+    // TODO: What happen if there is multiple winner?
+    // TODO: I only don't want to round number to it's ceiling
+
     function getWinner() public {
         if (block.timestamp <= gameDeadline) revert GameNotOver();
         address[] memory _playersRevealed = playersRevealed;
@@ -89,7 +92,7 @@ contract Game {
         for (uint256 i; i < _playersRevealed.length; i++) {
             _total += playerToNumberPicked[_playersRevealed[i]]; // add all numbers
         }
-        result = ((_total / _playersRevealed.length) * 80); // divide this by 100
+        result = (((_total / _playersRevealed.length) % 100) * 80) / 100; // Number always rounds to it's ceilng
         // pick a player who chooses closest to the result
         address firstPlayer = _playersRevealed[0];
         if (playerToNumberPicked[firstPlayer] > result) {

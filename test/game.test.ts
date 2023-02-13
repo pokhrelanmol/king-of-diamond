@@ -163,4 +163,74 @@ describe("GAME", function () {
             expect(await game.getRevealedPlayersCount()).to.eq(1);
         });
     });
+    describe("Get Winner", () => {
+        it("Should choose signer0 as winner", async () => {
+            const {
+                game,
+                secret,
+                ENTRY_FEE,
+                SALT,
+                GAME_PERIOD,
+                owner,
+                signers,
+            } = await loadFixture(deployGameFixture);
+            const hashedMove1 = getHashedMove(30, SALT);
+            const hashedMove2 = getHashedMove(44, SALT);
+            const hashedMove3 = getHashedMove(40, SALT);
+            const hashedMove4 = getHashedMove(10, SALT);
+            await game.pickNumber(hashedMove1, {
+                value: ENTRY_FEE,
+            });
+            await game.connect(signers[1]).pickNumber(hashedMove2, {
+                value: ENTRY_FEE,
+            });
+            await game.connect(signers[2]).pickNumber(hashedMove3, {
+                value: ENTRY_FEE,
+            });
+            await game.connect(signers[3]).pickNumber(hashedMove4, {
+                value: ENTRY_FEE,
+            });
+
+            await time.increase(GAME_PERIOD);
+            await game.revealNumber(30, SALT);
+            await game.connect(signers[1]).revealNumber(44, SALT);
+            await game.connect(signers[2]).revealNumber(40, SALT);
+            const tx = await game.connect(signers[3]).revealNumber(10, SALT);
+            expect(tx).to.emit(game, "Winner").withArgs(signers[0].address, 30);
+        });
+        it("Check what happen if two players have same number", async () => {
+            const {
+                game,
+                secret,
+                ENTRY_FEE,
+                SALT,
+                GAME_PERIOD,
+                owner,
+                signers,
+            } = await loadFixture(deployGameFixture);
+            const hashedMove1 = getHashedMove(2, SALT);
+            const hashedMove2 = getHashedMove(2, SALT);
+            const hashedMove3 = getHashedMove(2, SALT);
+            const hashedMove4 = getHashedMove(2, SALT);
+            await game.pickNumber(hashedMove1, {
+                value: ENTRY_FEE,
+            });
+            await game.connect(signers[1]).pickNumber(hashedMove2, {
+                value: ENTRY_FEE,
+            });
+            await game.connect(signers[2]).pickNumber(hashedMove3, {
+                value: ENTRY_FEE,
+            });
+            await game.connect(signers[3]).pickNumber(hashedMove4, {
+                value: ENTRY_FEE,
+            });
+
+            await time.increase(GAME_PERIOD);
+            await game.revealNumber(2, SALT);
+            await game.connect(signers[1]).revealNumber(2, SALT);
+            await game.connect(signers[2]).revealNumber(2, SALT);
+            const tx = await game.connect(signers[3]).revealNumber(2, SALT);
+            expect(tx).to.emit(game, "Winner").withArgs(signers[0].address, 1);
+        });
+    });
 });
