@@ -58,10 +58,9 @@ contract Game {
         if (msg.value < entryFee) revert EntryFeeIsLow();
         players.push(msg.sender);
         playerToSecret[msg.sender] = _secret;
-        // Caviate: if number is greater then 100 we can't really check it here but we can kick the player out and seize the entry fee if it is not in range at reveal time
     }
 
-    function revealNumber(uint8 _number, bytes32 _salt) external {
+    function revealNumber(uint256 _number, bytes32 _salt) external {
         if (!_isPlayer(msg.sender)) revert NotAPlayer();
         if (_number > 100 || _number <= 0) revert NumberOutOfRange();
         if (block.timestamp < gameDeadline) revert GameNotOver();
@@ -71,6 +70,7 @@ contract Game {
             playerToSecret[msg.sender]
         ) revert IncorrectNumberOrSalt();
         playerToNumberPicked[msg.sender] = _number;
+        // console.log(playerToNumberPicked[msg.sender]);
         playersRevealed.push(msg.sender);
         // last to call this function will also call getWinner function
 
@@ -92,30 +92,35 @@ contract Game {
         for (uint256 i; i < _playersRevealed.length; i++) {
             _total += playerToNumberPicked[_playersRevealed[i]]; // add all numbers
         }
-        result = (((_total / _playersRevealed.length) % 100) * 80) / 100; // Number always rounds to it's ceilng
+        // I need to fix the rounding here
+        result = (((_total / _playersRevealed.length) % 100) * 80); // Number always rounds to it's ceilng
+
+        console.log("result", result);
         // pick a player who chooses closest to the result
+
         address firstPlayer = _playersRevealed[0];
-        if (playerToNumberPicked[firstPlayer] > result) {
-            _winnerNumber = playerToNumberPicked[firstPlayer] - result;
+        if (playerToNumberPicked[firstPlayer] * 100 > result) {
+            _winnerNumber = playerToNumberPicked[firstPlayer] * 100 - result;
             _winner = firstPlayer;
         } else {
-            _winnerNumber = result - playerToNumberPicked[firstPlayer];
+            _winnerNumber = result - playerToNumberPicked[firstPlayer] * 100;
             _winner = firstPlayer;
         }
 
         for (uint256 i = 0; i < _playersRevealed.length; i++) {
             address _player = _playersRevealed[i];
             if (
-                playerToNumberPicked[_player] > result &&
-                playerToNumberPicked[_player] - result < _winnerNumber
+                playerToNumberPicked[_player] * 100 >= result &&
+                playerToNumberPicked[_player] * 100 - result < _winnerNumber
             ) {
-                _winnerNumber = playerToNumberPicked[_player] - result;
+                //    TODO:check here if there is a tie
+                _winnerNumber = playerToNumberPicked[_player] * 100 - result;
                 _winner = _player;
             } else if (
-                playerToNumberPicked[_player] < result &&
+                playerToNumberPicked[_player] * 100 <= result &&
                 result - playerToNumberPicked[_player] < _winnerNumber
             ) {
-                _winnerNumber = result - playerToNumberPicked[_player];
+                _winnerNumber = result - playerToNumberPicked[_player] * 100;
                 _winner = _player;
             }
         }
